@@ -40,5 +40,5 @@ linux:
   category: Office
 publish:
   provider: github
-  owner: Leadpy-Tecnologia
+  owner: mazocelo
   repo: infinity-desktop
