@@ -1,0 +1,14 @@
+node_modules/
+out/
+release/
+dist/
+*.log
+*.exe
+*.dmg
+*.AppImage
+*.snap
+*.deb
+*.rpm
+.env
+.env.*
+!.env.example

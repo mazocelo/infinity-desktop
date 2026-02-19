@@ -1,0 +1,44 @@
+appId: com.voxcity.infinity
+productName: Infinity
+directories:
+  buildResources: resources
+  output: release
+asar: true
+files:
+  - out/**/*
+  # Include pre-built infinity-frontend dist as the renderer
+  - from: ../infinity-frontend/dist
+    to: renderer
+    filter:
+      - "**/*"
+extraResources:
+  # Tray icon — loaded at runtime via process.resourcesPath
+  - from: resources/icon.png
+    to: icon.png
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  # electron-builder auto-converts icon.png from buildResources to .ico
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  shortcutName: Infinity
+mac:
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+  category: public.app-category.business
+linux:
+  target:
+    - target: AppImage
+      arch:
+        - x64
+  category: Office
+publish:
+  provider: github
+  owner: Leadpy-Tecnologia
+  repo: infinity-desktop
