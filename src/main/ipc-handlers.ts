@@ -48,6 +48,25 @@ export function setupIpcHandlers(): void {
     },
   )
 
+  // --- Confirm Dialog (native OS) ---
+  ipcMain.handle(
+    'show-confirm-dialog',
+    async (_event, title: string, message: string) => {
+      const win = BrowserWindow.getFocusedWindow()
+      if (!win) return false
+
+      const result = await dialog.showMessageBox(win, {
+        type: 'question',
+        buttons: ['Sim', 'Não'],
+        defaultId: 1,
+        cancelId: 1,
+        title,
+        message,
+      })
+      return result.response === 0
+    },
+  )
+
   // --- Window Title ---
   ipcMain.on('set-title', (event, title: string) => {
     const win = BrowserWindow.fromWebContents(event.sender)

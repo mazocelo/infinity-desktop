@@ -13,6 +13,10 @@ const electronAPI = {
     filters?: { name: string; extensions: string[] }[],
   ) => ipcRenderer.invoke('save-file', buffer, defaultName, filters),
 
+  // --- Confirm Dialog ---
+  showConfirmDialog: (title: string, message: string) =>
+    ipcRenderer.invoke('show-confirm-dialog', title, message) as Promise<boolean>,
+
   // --- Window ---
   setTitle: (title: string) => ipcRenderer.send('set-title', title),
 
