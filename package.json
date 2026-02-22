@@ -16,7 +16,8 @@
     "build:win": "npm run build:frontend && npm run build && electron-builder --win --config",
     "build:mac": "npm run build:frontend && npm run build && electron-builder --mac --config",
     "build:linux": "npm run build:frontend && npm run build && electron-builder --linux --config",
-    "build:dir": "npm run build && electron-builder --win --dir --config"
+    "build:dir": "npm run build && electron-builder --win --dir --config",
+    "sync-audit": "npx tsx scripts/sync-audit.ts"
   },
   "dependencies": {
     "electron-updater": "^6.3.9"
