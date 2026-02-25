@@ -4,6 +4,7 @@ import { is } from '@electron-toolkit/utils'
 
 let tray: Tray | null = null
 let currentCallState: 'idle' | 'ringing' | 'in-call' = 'idle'
+let currentBadgeCount = 0
 
 function getIconPath(): string {
   // In dev: icon is in project resources folder
@@ -95,19 +96,28 @@ export function updateCallState(
   currentCallState = state
   updateTrayMenu(mainWindow)
 
-  // Update tooltip based on call state
-  if (tray) {
-    switch (state) {
-      case 'ringing':
-        tray.setToolTip('Infinity - Chamada entrante')
-        break
-      case 'in-call':
-        tray.setToolTip('Infinity - Em chamada')
-        break
-      default:
-        tray.setToolTip('Infinity')
-    }
+  updateTrayTooltip()
+}
+
+export function updateBadgeCount(count: number): void {
+  currentBadgeCount = count
+  updateTrayTooltip()
+}
+
+function updateTrayTooltip(): void {
+  if (!tray) return
+
+  let tooltip = 'Infinity'
+
+  if (currentCallState === 'ringing') {
+    tooltip = 'Infinity - Chamada entrante'
+  } else if (currentCallState === 'in-call') {
+    tooltip = 'Infinity - Em chamada'
+  } else if (currentBadgeCount > 0) {
+    tooltip = `Infinity (${currentBadgeCount} ${currentBadgeCount === 1 ? 'notificacao' : 'notificacoes'})`
   }
+
+  tray.setToolTip(tooltip)
 }
 
 export function destroyTray(): void {

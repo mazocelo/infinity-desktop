@@ -3,8 +3,14 @@ import { contextBridge, ipcRenderer } from 'electron'
 // Expose protected APIs to the renderer process via window.electronAPI
 const electronAPI = {
   // --- Notifications ---
-  showNotification: (title: string, body: string, options?: { silent?: boolean }) =>
+  showNotification: (title: string, body: string, options?: { silent?: boolean; tag?: string }) =>
     ipcRenderer.invoke('show-notification', title, body, options),
+
+  onNotificationClicked: (callback: (tag?: string) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, tag?: string) => callback(tag)
+    ipcRenderer.on('notification-clicked', handler)
+    return () => ipcRenderer.removeListener('notification-clicked', handler)
+  },
 
   // --- File Downloads ---
   saveFile: (
@@ -33,6 +39,9 @@ const electronAPI = {
   getAppVersion: () => ipcRenderer.invoke('get-app-version') as Promise<string>,
   isElectron: () => ipcRenderer.invoke('is-electron') as Promise<boolean>,
 
+  // --- Badge Count ---
+  setBadgeCount: (count: number) => ipcRenderer.send('set-badge-count', count),
+
   // --- IPC Listeners (main → renderer) ---
   onTrayAction: (callback: (action: string) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, action: string) => callback(action)
@@ -52,6 +61,13 @@ const electronAPI = {
       callback(info)
     ipcRenderer.on('update-downloaded', handler)
     return () => ipcRenderer.removeListener('update-downloaded', handler)
+  },
+
+  // --- Deep Linking (infinity://) ---
+  onDeepLink: (callback: (route: string) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, route: string) => callback(route)
+    ipcRenderer.on('deep-link', handler)
+    return () => ipcRenderer.removeListener('deep-link', handler)
   },
 }
 

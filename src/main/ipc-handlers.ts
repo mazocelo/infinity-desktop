@@ -5,7 +5,7 @@ export function setupIpcHandlers(): void {
   // --- Native Notifications ---
   ipcMain.handle(
     'show-notification',
-    (_event, title: string, body: string, options?: { silent?: boolean }) => {
+    (_event, title: string, body: string, options?: { silent?: boolean; tag?: string }) => {
       const notification = new Notification({
         title,
         body,
@@ -18,7 +18,10 @@ export function setupIpcHandlers(): void {
         const win = BrowserWindow.getAllWindows()[0]
         if (win) {
           if (win.isMinimized()) win.restore()
+          win.show()
           win.focus()
+          // Notify renderer that this notification was clicked
+          win.webContents.send('notification-clicked', options?.tag)
         }
       })
     },
