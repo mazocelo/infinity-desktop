@@ -236,6 +236,7 @@ if (!gotTheLock) {
       if (details.url.includes('voxcity.com.br')) {
         headers['access-control-allow-origin'] = [PROTOCOL_URL.replace(/\/$/, '')]
         headers['access-control-allow-credentials'] = ['true']
+        headers['cross-origin-resource-policy'] = ['cross-origin']
       }
       callback({ responseHeaders: headers })
     })
