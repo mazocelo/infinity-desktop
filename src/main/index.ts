@@ -19,6 +19,12 @@ const RENDERER_DIST = join(__dirname, '../../renderer')
 const PROTOCOL = 'app'
 const PROTOCOL_URL = `${PROTOCOL}://./`
 
+// Hostnames whose window.open popups must open as an in-app child window
+// (preserving window.opener + postMessage) instead of being shunted to the
+// system browser. Used by Meta Embedded Signup (WhatsApp Oficial) FB.login().
+// STRICT allowlist — do not add arbitrary hosts.
+const OAUTH_POPUP_HOSTS = ['facebook.com', 'www.facebook.com']
+
 if (!is.dev) {
   protocol.registerSchemesAsPrivileged([
     {
@@ -129,6 +135,32 @@ function createWindow(): void {
 
   // Open external links in the default browser, handle tel: for softphone
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    // OAuth popups that must stay INSIDE Electron as a child window so that
+    // window.opener is preserved and the provider's postMessage reaches the
+    // renderer. Meta Embedded Signup (WhatsApp Oficial) FB.login() relies on this.
+    // Keep this allowlist STRICT — never allow arbitrary https, or external
+    // links would stop going to the system browser.
+    let host = ''
+    try {
+      host = new URL(url).hostname
+    } catch {
+      // Invalid URL — fall through to the default handling below.
+    }
+    if (OAUTH_POPUP_HOSTS.includes(host)) {
+      return {
+        action: 'allow',
+        overrideBrowserWindowOptions: {
+          width: 600,
+          height: 750,
+          autoHideMenuBar: true,
+          webPreferences: {
+            contextIsolation: true,
+            nodeIntegration: false,
+          },
+        },
+      }
+    }
+
     if (url.startsWith('http://') || url.startsWith('https://')) {
       shell.openExternal(url)
     }
