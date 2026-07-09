@@ -274,8 +274,9 @@ if (!gotTheLock) {
     })
 
     // Grant microphone/camera permissions for WebRTC (softphone, video)
+    // clipboard-sanitized-write: recurso de copiar ata/transcrição do webapp
     session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
-      const allowed = ['media', 'mediaKeySystem', 'notifications', 'clipboard-read']
+      const allowed = ['media', 'mediaKeySystem', 'notifications', 'clipboard-read', 'clipboard-sanitized-write']
       callback(allowed.includes(permission))
     })
 
