@@ -172,6 +172,49 @@ function createWindow(): void {
     return { action: 'deny' }
   })
 
+  // Login pela Microsoft (#26546): o core devolve o navegador para o SITE
+  // (`FRONTEND_URL/login?sso=ok` ou `?sso_error=…`), mas a janela do app so
+  // fala com a API como `app://.` (cabecalhos reescritos no whenReady). Com o
+  // site carregado aqui, toda chamada a API cai por CORS e o login nunca
+  // completa. Qualquer navegacao da janela principal para o site volta para o
+  // app embutido, no mesmo caminho e com a mesma query. Os cookies que o
+  // retorno gravou (refresh_token / sso_pending) nascem no contexto do site;
+  // regravados sem particao para a janela `app://.` enxergar.
+  const SITE_URL = 'https://infinity.voxcity.com.br'
+  const voltarParaOApp = (event: Electron.Event, url: string): void => {
+    if (is.dev || !url.startsWith(`${SITE_URL}/`)) return
+    event.preventDefault()
+    const { pathname, search } = new URL(url)
+    const destino = `${PROTOCOL_URL}${pathname.replace(/^\//, '')}${search}`
+    session.defaultSession.cookies
+      .get({ domain: 'voxcity.com.br' })
+      .then((cookies) =>
+        Promise.all(
+          cookies
+            .filter((c) => c.name === 'refresh_token' || c.name === 'sso_pending')
+            .map((c) =>
+              session.defaultSession.cookies.set({
+                url: 'https://api-gateway.voxcity.com.br/',
+                name: c.name,
+                value: c.value,
+                domain: c.domain,
+                path: c.path,
+                secure: true,
+                httpOnly: c.httpOnly,
+                sameSite: 'no_restriction',
+                expirationDate: c.expirationDate,
+              }),
+            ),
+        ),
+      )
+      .catch((err) => console.error('[sso] cookies do retorno:', err))
+      .finally(() => {
+        mainWindow?.loadURL(destino)
+      })
+  }
+  mainWindow.webContents.on('will-redirect', voltarParaOApp)
+  mainWindow.webContents.on('will-navigate', voltarParaOApp)
+
   // Dev: load from Vite dev server | Prod: load via custom protocol (SPA routing)
   if (is.dev && DEV_SERVER_URL) {
     mainWindow.loadURL(DEV_SERVER_URL)
