@@ -209,7 +209,7 @@ function createWindow(): void {
       )
       .catch((err) => console.error('[sso] cookies do retorno:', err))
       .finally(() => {
-        mainWindow?.loadURL(destino)
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.loadURL(destino)
       })
   }
   mainWindow.webContents.on('will-redirect', voltarParaOApp)
