@@ -61,6 +61,9 @@ if (!is.dev) {
  *   infinity://call/NUMBER       → triggers dial:NUMBER via tray-action
  *   infinity://dashboard         → /dashboard
  *   infinity://path/...          → /path/...
+ * A query string vai junto (Card VoxPlan #32894): os avisos do sino levam a
+ * `/usuarios?pendencias=<id>` e `/usuarios?status=desativado`, e sem a query o
+ * link so abriria a lista, sem a janela de pendencias.
  */
 function handleDeepLink(url: string): void {
   try {
@@ -80,7 +83,7 @@ function handleDeepLink(url: string): void {
     } else if (path === 'dashboard' || path === 'dashboard/') {
       route = '/dashboard'
     } else {
-      route = `/${path}`
+      route = `/${path}${parsed.search}`
     }
 
     if (mainWindow && route) {
