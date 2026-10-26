@@ -26,6 +26,9 @@ const electronAPI = {
   // --- Window ---
   setTitle: (title: string) => ipcRenderer.send('set-title', title),
 
+  // --- Bloqueio de captura do sistema ("ver uma vez" do chat, #32852) ---
+  setProtecaoDeCaptura: (ligada: boolean) => ipcRenderer.send('protecao-de-captura', ligada),
+
   // --- Call State (renderer → main, updates tray) ---
   setCallState: (state: 'idle' | 'ringing' | 'in-call') =>
     ipcRenderer.send('call-state-changed', state),
@@ -55,6 +58,9 @@ const electronAPI = {
     ipcRenderer.on('update-available', handler)
     return () => ipcRenderer.removeListener('update-available', handler)
   },
+
+  // "Reiniciar agora": fecha e instala a versão baixada.
+  installUpdate: () => ipcRenderer.send('instalar-atualizacao'),
 
   onUpdateDownloaded: (callback: (info: { version: string }) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, info: { version: string }) =>

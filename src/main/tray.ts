@@ -65,7 +65,7 @@ export function updateTrayMenu(mainWindow: BrowserWindow): void {
   if (currentCallState === 'in-call') {
     callItems.push(
       {
-        label: 'Mute',
+        label: 'Silenciar',
         click: () => mainWindow.webContents.send('tray-action', 'mute'),
       },
       {
@@ -110,11 +110,11 @@ function updateTrayTooltip(): void {
   let tooltip = 'Infinity'
 
   if (currentCallState === 'ringing') {
-    tooltip = 'Infinity - Chamada entrante'
+    tooltip = 'Infinity · Chamada recebida'
   } else if (currentCallState === 'in-call') {
-    tooltip = 'Infinity - Em chamada'
+    tooltip = 'Infinity · Em chamada'
   } else if (currentBadgeCount > 0) {
-    tooltip = `Infinity (${currentBadgeCount} ${currentBadgeCount === 1 ? 'notificacao' : 'notificacoes'})`
+    tooltip = `Infinity (${currentBadgeCount} ${currentBadgeCount === 1 ? 'notificação' : 'notificações'})`
   }
 
   tray.setToolTip(tooltip)

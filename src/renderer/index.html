@@ -2,14 +2,100 @@
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
-    <title>Infinity</title>
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'"
+    />
+    <title>Infinity · Sem conexão</title>
+    <style>
+      /* Tokens do Vox Midnight (infinity-frontend/src/styles/tailwind.css). */
+      :root {
+        --vm-bg-primary: #080c16;
+        --vm-bg-tertiary: #111827;
+        --vm-border-subtle: rgba(78, 95, 124, 0.6);
+        --vm-text-primary: #e8edf5;
+        --vm-text-secondary: #94a3b8;
+        --vm-accent-green: #9ac31c;
+        --vm-accent-green-hover: #7ba316;
+      }
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+      body {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--vm-bg-primary);
+        color: var(--vm-text-primary);
+        font: 14px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif;
+      }
+      .cartao {
+        width: 360px;
+        padding: 32px;
+        border-radius: 12px;
+        border: 1px solid var(--vm-border-subtle);
+        background: var(--vm-bg-tertiary);
+        text-align: center;
+      }
+      .logo {
+        width: 56px;
+        height: 56px;
+      }
+      h1 {
+        margin: 16px 0 4px;
+        font-size: 18px;
+        font-weight: 600;
+      }
+      p {
+        margin: 0 0 24px;
+        color: var(--vm-text-secondary);
+      }
+      button {
+        height: 36px;
+        padding: 0 20px;
+        border: 0;
+        border-radius: 8px;
+        background: var(--vm-accent-green);
+        color: var(--vm-bg-primary);
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button:hover {
+        background: var(--vm-accent-green-hover);
+      }
+      button:disabled {
+        opacity: 0.6;
+        cursor: default;
+      }
+    </style>
   </head>
   <body>
     <!--
-      This is a placeholder for electron-vite renderer build.
-      In dev mode: the main process loads http://localhost:5173 (infinity-frontend dev server).
-      In prod mode: the main process loads ../infinity-frontend/dist/index.html via electron-builder.
+      Página da casca quando o site não carrega (sem rede, DNS, servidor fora).
+      O main a abre com ?volta=<endereço do app>; ela volta sozinha quando a
+      rede volta, a cada 15 s, ou no botão.
     -->
-    <div id="root">Loading...</div>
+    <main class="cartao">
+      <img class="logo" src="./icon.png" alt="" />
+      <h1>Sem conexão com o Infinity</h1>
+      <p>Confira a internet deste computador. O app tenta de novo sozinho.</p>
+      <button id="tentar" type="button">Tentar de novo</button>
+    </main>
+    <script>
+      const volta = new URLSearchParams(location.search).get('volta')
+      const botao = document.getElementById('tentar')
+      function tentar() {
+        if (!volta) return
+        botao.disabled = true
+        botao.textContent = 'Conectando…'
+        location.replace(volta)
+      }
+      botao.addEventListener('click', tentar)
+      window.addEventListener('online', tentar)
+      setInterval(() => navigator.onLine && tentar(), 15000)
+    </script>
   </body>
 </html>
