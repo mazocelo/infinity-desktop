@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, Menu, nativeTheme, session, shell } from 'electron'
 import { join } from 'path'
+import { pathToFileURL } from 'url'
 import { is } from '@electron-toolkit/utils'
 import { setupIpcHandlers } from './ipc-handlers'
 import { createTray, updateCallState, updateBadgeCount, destroyTray } from './tray'
@@ -10,7 +11,7 @@ import {
   ehDoApp,
   interpretarDeepLink,
   podeAbrirFora,
-  podeNavegarNaJanela,
+  decidirNavegacao,
   resolverEnderecoDoApp,
 } from './navegacao'
 
@@ -88,12 +89,17 @@ function abrirFora(url: string): void {
 
 // Sem rede o site não carrega: a casca mostra a própria página "sem conexão",
 // que volta para o site sozinha quando a rede volta.
+const PAGINA_SEM_CONEXAO = join(__dirname, '../renderer/index.html')
+const URL_SEM_CONEXAO = pathToFileURL(PAGINA_SEM_CONEXAO).href
+
 function mostrarSemConexao(): void {
   if (!mainWindow || mainWindow.isDestroyed()) return
-  mainWindow.loadFile(join(__dirname, '../renderer/index.html'), {
-    query: { volta: ENDERECO_DO_APP },
-  })
+  mainWindow.loadFile(PAGINA_SEM_CONEXAO, { query: { volta: ENDERECO_DO_APP } }).catch(() => {})
 }
+
+// A janela saiu do site para o login da Microsoft e ainda não voltou
+// (decidirNavegacao, navegacao.ts).
+let emLogin = false
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -174,22 +180,32 @@ function createWindow(): void {
   })
 
   // A janela só navega pelo site, pela API e pelo login da Microsoft; qualquer
-  // outro destino vai para o navegador do sistema.
-  const conterNavegacao = (event: Electron.Event, url: string): void => {
-    if (url.startsWith('file://') || podeNavegarNaJanela(url, ENDERECO_DO_APP)) return
+  // outro destino vai para o navegador do sistema. Só o quadro principal: o
+  // will-redirect também dispara em iframe (mapa, telas de outros sistemas) e
+  // conter ali deixaria o iframe em branco e abriria o navegador sozinho.
+  const conterNavegacao = (
+    event: Electron.Event<Electron.WebContentsWillNavigateEventParams>,
+  ): void => {
+    if (!event.isMainFrame || event.url.startsWith(URL_SEM_CONEXAO)) return
+    const decisao = decidirNavegacao(event.url, ENDERECO_DO_APP, emLogin)
+    emLogin = decisao.emLogin
+    if (decisao.permitir) return
     event.preventDefault()
-    abrirFora(url)
+    abrirFora(event.url)
   }
   mainWindow.webContents.on('will-navigate', conterNavegacao)
   mainWindow.webContents.on('will-redirect', conterNavegacao)
 
   mainWindow.webContents.on('did-fail-load', (_event, codigo, _descricao, url, quadroPrincipal) => {
     // -3 = ERR_ABORTED: navegação trocada por outra, não é falta de rede.
-    if (!quadroPrincipal || codigo === -3 || !ehDoApp(url, ENDERECO_DO_APP)) return
+    if (!quadroPrincipal || codigo === -3) return
+    if (!ehDoApp(url, ENDERECO_DO_APP) && !emLogin) return
+    emLogin = false
     mostrarSemConexao()
   })
 
-  mainWindow.loadURL(ENDERECO_DO_APP)
+  // Falha de rede vira a página "sem conexão" pelo did-fail-load.
+  mainWindow.loadURL(ENDERECO_DO_APP).catch(() => {})
   if (is.dev) mainWindow.webContents.openDevTools()
 
   mainWindow.on('closed', () => {

@@ -20,7 +20,7 @@ O consumidor da ponte é `infinity-frontend/src/shared/utils/electron.utils.ts` 
 ## Regras
 
 - **A ponte só serve ao site.** Handler novo de IPC que age (escreve arquivo, mostra algo, muda configuração) vai embrulhado em `soDoApp(enderecoDoApp, …)`. O preload expõe a ponte em qualquer página da janela; quem recusa é o main.
-- **Navegação é lista de permissão.** A janela só anda pelo site, por `*.voxcity.com.br` em https e pelo login da Microsoft (`navegacao.ts`). Popup dentro do app só para o Facebook (`OAUTH_POPUP_HOSTS`, Embedded Signup do WhatsApp Oficial). O resto vai ao navegador do sistema, e só `http`, `https` e `mailto`.
+- **Navegação é lista de permissão** (`decidirNavegacao`, `navegacao.ts`), só no quadro principal. A janela anda pelo site, pelo `api-gateway` e pelos hosts de login da Microsoft. Depois de entrar na Microsoft fica em "modo login": qualquer https passa até voltar ao site, porque a empresa pode federar num ADFS próprio. Não volte ao sufixo `*.voxcity.com.br`: o bucket serve arquivo enviado por usuário. Login do Google não roda em navegador embutido (o Google recusa o user-agent) e vai para o navegador do sistema. Popup dentro do app só para o Facebook (`OAUTH_POPUP_HOSTS`, Embedded Signup do WhatsApp Oficial). O resto vai ao navegador do sistema, e só `http`, `https` e `mailto`.
 - **Permissões** (microfone, câmera, notificação, área de transferência) só para a origem do site.
 - `INFINITY_DESKTOP_URL` aponta a casca para a homolog ou um preview (só https, ou http em localhost). Em dev o padrão é o Vite do front em `:5173`.
 
@@ -29,7 +29,7 @@ O consumidor da ponte é `infinity-frontend/src/shared/utils/electron.utils.ts` 
 ```bash
 npm ci
 npm run typecheck
-npm test                      # vitest — regras de navegação e deep link
+npm test                      # vitest — navegação, deep link e a guarda soDoApp de cada canal
 npm run dev                   # precisa do front em :5173 (npm run dev:frontend)
 npm run build:win             # instalador NSIS em release/
 ```

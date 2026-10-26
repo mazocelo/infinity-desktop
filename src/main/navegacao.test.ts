@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
+  decidirNavegacao,
   ehDoApp,
   interpretarDeepLink,
   podeAbrirFora,
-  podeNavegarNaJanela,
   resolverEnderecoDoApp,
 } from './navegacao'
 
@@ -47,18 +47,56 @@ describe('ehDoApp', () => {
   })
 })
 
-describe('podeNavegarNaJanela', () => {
+describe('decidirNavegacao', () => {
   it.each([
     [`${APP}/tela-operacao/chat`, true],
     ['https://api-gateway.voxcity.com.br/core/auth/entra/callback?code=1', true],
-    ['https://login.microsoftonline.com/common/oauth2/v2.0/authorize?x=1', true],
-    ['https://login.live.com/oauth20_authorize.srf', true],
+    ['https://bucket.voxcity.com.br/arquivo-enviado.html', false],
+    ['https://suporte.voxcity.com.br/', false],
     ['https://evil-voxcity.com.br/', false],
-    ['https://voxcity.com.br.evil.com/', false],
     ['http://api-gateway.voxcity.com.br/', false],
     ['https://www.google.com/', false],
-  ])('%s → %s', (url, esperado) => {
-    expect(podeNavegarNaJanela(url, APP)).toBe(esperado)
+    ['https://adfs.prefeitura.sc.gov.br/adfs/ls', false],
+  ])('fora do login: %s → %s', (url, permitir) => {
+    expect(decidirNavegacao(url, APP, false)).toEqual({ permitir, emLogin: false })
+  })
+
+  it.each([
+    'https://login.microsoftonline.com/common/oauth2/v2.0/authorize?x=1',
+    'https://device.login.microsoftonline.com/',
+    'https://passwordreset.microsoftonline.com/',
+    'https://login.windows.net/common/oauth2/authorize',
+    'https://login.live.com/oauth20_authorize.srf',
+    'https://mysignins.microsoft.com/register',
+  ])('host de login da Microsoft entra no modo login: %s', (url) => {
+    expect(decidirNavegacao(url, APP, false)).toEqual({ permitir: true, emLogin: true })
+  })
+
+  it('no modo login, o ADFS da empresa passa', () => {
+    expect(decidirNavegacao('https://adfs.prefeitura.sc.gov.br/adfs/ls', APP, true)).toEqual({
+      permitir: true,
+      emLogin: true,
+    })
+  })
+
+  it('no modo login, http continua barrado', () => {
+    expect(decidirNavegacao('http://adfs.prefeitura.sc.gov.br/', APP, true)).toEqual({
+      permitir: false,
+      emLogin: true,
+    })
+  })
+
+  it('a volta pela API mantém o modo login e a chegada ao site o encerra', () => {
+    const api = decidirNavegacao('https://api-gateway.voxcity.com.br/core/auth/entra/callback', APP, true)
+    expect(api).toEqual({ permitir: true, emLogin: true })
+    expect(decidirNavegacao(`${APP}/login?sso=ok`, APP, api.emLogin)).toEqual({
+      permitir: true,
+      emLogin: false,
+    })
+  })
+
+  it('o login da Microsoft não é sufixo solto (microsoftonline.com.evil.com)', () => {
+    expect(decidirNavegacao('https://login.microsoftonline.com.evil.com/', APP, false).permitir).toBe(false)
   })
 })
 

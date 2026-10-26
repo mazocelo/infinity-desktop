@@ -5,11 +5,13 @@
 const SITE_DE_PRODUCAO = 'https://infinity.voxcity.com.br'
 const VITE_DO_FRONT = 'http://localhost:5173'
 
-// Login pela Microsoft (#26546): o front leva a janela inteira ao
-// authorize_url e o core devolve ao site. A janela precisa poder passar por lá.
-const HOSTS_DE_LOGIN = ['login.microsoftonline.com', 'login.live.com', 'login.microsoft.com']
+// Hosts que a janela atravessa no login pela Microsoft (#26546): o front leva
+// a janela inteira ao authorize_url e o core devolve ao site. Sufixo cobre os
+// subdomínios (device., passwordreset., autologon.).
+const DOMINIOS_DE_LOGIN = ['microsoftonline.com', 'login.windows.net', 'login.live.com', 'account.live.com', 'login.microsoft.com', 'mysignins.microsoft.com']
 
-const DOMINIO_DA_VOX = 'voxcity.com.br'
+// A API devolve o retorno do login para o site.
+const HOSTS_DA_API = ['api-gateway.voxcity.com.br']
 
 function parse(url: string): URL | null {
   try {
@@ -39,13 +41,27 @@ export function ehDoApp(url: string, enderecoDoApp: string): boolean {
   return !!u && u.origin === new URL(enderecoDoApp).origin
 }
 
-/** A janela principal pode navegar até a URL sem mandá-la ao navegador. */
-export function podeNavegarNaJanela(url: string, enderecoDoApp: string): boolean {
-  if (ehDoApp(url, enderecoDoApp)) return true
+function ehLoginExterno(host: string): boolean {
+  return DOMINIOS_DE_LOGIN.some((d) => host === d || host.endsWith(`.${d}`))
+}
+
+/**
+ * Se a janela principal pode ir até a URL. `emLogin` diz que a janela saiu do
+ * site para o login da Microsoft: até voltar ao site, qualquer https passa,
+ * porque a empresa pode federar o login num servidor dela (ADFS) com domínio
+ * que não dá para listar. A ponte electronAPI continua recusando fora do site.
+ */
+export function decidirNavegacao(
+  url: string,
+  enderecoDoApp: string,
+  emLogin: boolean,
+): { permitir: boolean; emLogin: boolean } {
+  if (ehDoApp(url, enderecoDoApp)) return { permitir: true, emLogin: false }
   const u = parse(url)
-  if (!u || u.protocol !== 'https:') return false
-  if (HOSTS_DE_LOGIN.includes(u.hostname)) return true
-  return u.hostname === DOMINIO_DA_VOX || u.hostname.endsWith(`.${DOMINIO_DA_VOX}`)
+  if (!u || u.protocol !== 'https:') return { permitir: false, emLogin }
+  if (ehLoginExterno(u.hostname)) return { permitir: true, emLogin: true }
+  if (HOSTS_DA_API.includes(u.hostname)) return { permitir: true, emLogin }
+  return { permitir: emLogin, emLogin }
 }
 
 /** Só web e e-mail vão para o sistema; file:, smb:, protocolos de app não. */
