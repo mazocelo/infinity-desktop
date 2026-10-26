@@ -5,12 +5,8 @@ directories:
   output: release
 asar: true
 files:
+  # Só a casca: as telas vêm do site (https://infinity.voxcity.com.br)
   - out/**/*
-  # Include pre-built infinity-frontend dist as the renderer
-  - from: ../infinity-frontend/dist
-    to: renderer
-    filter:
-      - "**/*"
 extraResources:
   # Tray icon — loaded at runtime via process.resourcesPath
   - from: resources/icon.png
@@ -45,5 +41,5 @@ linux:
   category: Office
 publish:
   provider: github
-  owner: mazocelo
+  owner: Voxcity-Dev
   repo: infinity-desktop

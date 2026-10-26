@@ -18,13 +18,17 @@ export default defineConfig({
         input: {
           index: 'src/preload/index.ts',
         },
+        // Preload com sandbox: true não roda ESM; sai em CommonJS (.cjs).
+        output: {
+          format: 'cjs',
+          entryFileNames: '[name].cjs',
+        },
       },
     },
   },
   renderer: {
-    // Minimal renderer build — just the placeholder HTML.
-    // In dev: main process loads http://localhost:5173 (infinity-frontend dev server).
-    // In prod: main process loads infinity-frontend/dist/index.html (copied by electron-builder).
+    // Só a página "sem conexão" da casca: as telas vêm do site
+    // (https://infinity.voxcity.com.br; em dev, o Vite do front em :5173).
     root: 'src/renderer',
     build: {
       rollupOptions: {

@@ -1,23 +1,31 @@
-import { app, BrowserWindow, shell, ipcMain, protocol, net, session } from 'electron'
+import { app, BrowserWindow, ipcMain, Menu, nativeTheme, session, shell } from 'electron'
 import { join } from 'path'
-import { existsSync, statSync } from 'fs'
+import { pathToFileURL } from 'url'
 import { is } from '@electron-toolkit/utils'
 import { setupIpcHandlers } from './ipc-handlers'
 import { createTray, updateCallState, updateBadgeCount, destroyTray } from './tray'
 import { setupAutoUpdater } from './updater'
 import { setupStartup } from './startup'
+import { soDoApp } from './origem'
+import {
+  ehDoApp,
+  interpretarDeepLink,
+  podeAbrirFora,
+  decidirNavegacao,
+  resolverEnderecoDoApp,
+} from './navegacao'
 
-// The URL of infinity-frontend's Vite dev server
-const DEV_SERVER_URL = 'http://localhost:5173'
+// A janela abre o próprio site (decision board "Infinity Desktop no padrão do
+// Infinity", 26/10/2026): o desktop anda junto com cada deploy do front e a
+// casca fica só com o que é nativo (bandeja, notificação, auto-start, links
+// infinity://). INFINITY_DESKTOP_URL aponta para a homolog ou um preview.
+const ENDERECO_DO_APP = resolverEnderecoDoApp({
+  dev: is.dev,
+  override: process.env.INFINITY_DESKTOP_URL,
+})
 
-// Path to the pre-built infinity-frontend dist (production)
-// In packaged app: out/main/ → ../../renderer → <app>/renderer/ (copied by electron-builder)
-const RENDERER_DIST = join(__dirname, '../../renderer')
-
-// Custom protocol for production SPA routing.
-// Any route (e.g. app:///login) serves index.html so React Router handles it.
-const PROTOCOL = 'app'
-const PROTOCOL_URL = `${PROTOCOL}://./`
+// O fundo da janela enquanto o site carrega: o vm-bg-primary do Vox Midnight.
+const FUNDO_VOX_MIDNIGHT = '#080c16'
 
 // Hostnames whose window.open popups must open as an in-app child window
 // (preserving window.opener + postMessage) instead of being shunted to the
@@ -25,19 +33,16 @@ const PROTOCOL_URL = `${PROTOCOL}://./`
 // STRICT allowlist — do not add arbitrary hosts.
 const OAUTH_POPUP_HOSTS = ['facebook.com', 'www.facebook.com']
 
-if (!is.dev) {
-  protocol.registerSchemesAsPrivileged([
-    {
-      scheme: PROTOCOL,
-      privileges: {
-        standard: true,
-        secure: true,
-        supportFetchAPI: true,
-        corsEnabled: true,
-      },
-    },
-  ])
-}
+// Permissões que o site pede: microfone/câmera do softphone e do vídeo,
+// notificação, e copiar ata/transcrição.
+const PERMISSOES_DO_APP = [
+  'media',
+  'mediaKeySystem',
+  'notifications',
+  'clipboard-read',
+  'clipboard-sanitized-write',
+  'fullscreen',
+]
 
 function getIconPath(): string {
   return is.dev
@@ -54,51 +59,47 @@ if (!is.dev) {
   app.setAsDefaultProtocolClient('infinity')
 }
 
-/**
- * Parse infinity:// deep link URLs and send navigation to renderer.
- * Supported formats:
- *   infinity://chat/CONVERSA_ID  → /tela-operacao/chat?id=CONVERSA_ID
- *   infinity://call/NUMBER       → triggers dial:NUMBER via tray-action
- *   infinity://dashboard         → /dashboard
- *   infinity://path/...          → /path/...
- * A query string vai junto (Card VoxPlan #32894): os avisos do sino levam a
- * `/usuarios?pendencias=<id>` e `/usuarios?status=desativado`, e sem a query o
- * link so abriria a lista, sem a janela de pendencias.
- */
+function mostrarJanela(): void {
+  if (!mainWindow) return
+  if (mainWindow.isMinimized()) mainWindow.restore()
+  mainWindow.show()
+  mainWindow.focus()
+}
+
 function handleDeepLink(url: string): void {
-  try {
-    const parsed = new URL(url)
-    if (parsed.protocol !== 'infinity:') return
+  const link = interpretarDeepLink(url)
+  if (!link) return
 
-    const path = parsed.hostname + parsed.pathname
-    let route: string | null = null
-
-    if (path.startsWith('chat/')) {
-      const conversaId = path.replace('chat/', '')
-      route = `/tela-operacao/chat?id=${conversaId}`
-    } else if (path.startsWith('call/')) {
-      const number = path.replace('call/', '')
-      mainWindow?.webContents.send('tray-action', `dial:${number}`)
-      return
-    } else if (path === 'dashboard' || path === 'dashboard/') {
-      route = '/dashboard'
-    } else {
-      route = `/${path}${parsed.search}`
-    }
-
-    if (mainWindow && route) {
-      if (mainWindow.isMinimized()) mainWindow.restore()
-      mainWindow.show()
-      mainWindow.focus()
-      mainWindow.webContents.send('deep-link', route)
-    } else if (route) {
-      // Window not ready yet — store for when it initializes
-      pendingDeepLink = route
-    }
-  } catch {
-    // Invalid URL — ignore
+  if (link.tipo === 'discar') {
+    mainWindow?.webContents.send('tray-action', `dial:${link.numero}`)
+    return
+  }
+  if (mainWindow) {
+    mostrarJanela()
+    mainWindow.webContents.send('deep-link', link.rota)
+  } else {
+    // Window not ready yet — store for when it initializes
+    pendingDeepLink = link.rota
   }
 }
+
+function abrirFora(url: string): void {
+  if (podeAbrirFora(url)) shell.openExternal(url)
+}
+
+// Sem rede o site não carrega: a casca mostra a própria página "sem conexão",
+// que volta para o site sozinha quando a rede volta.
+const PAGINA_SEM_CONEXAO = join(__dirname, '../renderer/index.html')
+const URL_SEM_CONEXAO = pathToFileURL(PAGINA_SEM_CONEXAO).href
+
+function mostrarSemConexao(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  mainWindow.loadFile(PAGINA_SEM_CONEXAO, { query: { volta: ENDERECO_DO_APP } }).catch(() => {})
+}
+
+// A janela saiu do site para o login da Microsoft e ainda não voltou
+// (decidirNavegacao, navegacao.ts).
+let emLogin = false
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -109,11 +110,13 @@ function createWindow(): void {
     show: false,
     title: 'Infinity',
     icon: getIconPath(),
+    backgroundColor: FUNDO_VOX_MIDNIGHT,
+    autoHideMenuBar: true,
     webPreferences: {
-      preload: join(__dirname, '../preload/index.mjs'),
+      preload: join(__dirname, '../preload/index.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
     },
   })
 
@@ -136,7 +139,6 @@ function createWindow(): void {
     }
   })
 
-  // Open external links in the default browser, handle tel: for softphone
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     // OAuth popups that must stay INSIDE Electron as a child window so that
     // window.opener is preserved and the provider's postMessage reaches the
@@ -156,75 +158,55 @@ function createWindow(): void {
           width: 600,
           height: 750,
           autoHideMenuBar: true,
+          backgroundColor: FUNDO_VOX_MIDNIGHT,
           webPreferences: {
             contextIsolation: true,
             nodeIntegration: false,
+            sandbox: true,
           },
         },
       }
     }
 
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      shell.openExternal(url)
-    }
     // tel: links — send to renderer so softphone can handle them
     if (url.startsWith('tel:')) {
-      const number = url.replace('tel:', '')
-      mainWindow?.webContents.send('tray-action', `dial:${number}`)
+      const link = interpretarDeepLink(`infinity://call/${url.slice(4)}`)
+      if (link?.tipo === 'discar') mainWindow?.webContents.send('tray-action', `dial:${link.numero}`)
+      return { action: 'deny' }
     }
+
+    abrirFora(url)
     return { action: 'deny' }
   })
 
-  // Login pela Microsoft (#26546): o core devolve o navegador para o SITE
-  // (`FRONTEND_URL/login?sso=ok` ou `?sso_error=…`), mas a janela do app so
-  // fala com a API como `app://.` (cabecalhos reescritos no whenReady). Com o
-  // site carregado aqui, toda chamada a API cai por CORS e o login nunca
-  // completa. Qualquer navegacao da janela principal para o site volta para o
-  // app embutido, no mesmo caminho e com a mesma query. Os cookies que o
-  // retorno gravou (refresh_token / sso_pending) nascem no contexto do site;
-  // regravados sem particao para a janela `app://.` enxergar.
-  const SITE_URL = 'https://infinity.voxcity.com.br'
-  const voltarParaOApp = (event: Electron.Event, url: string): void => {
-    if (is.dev || !url.startsWith(`${SITE_URL}/`)) return
+  // A janela só navega pelo site, pela API e pelo login da Microsoft; qualquer
+  // outro destino vai para o navegador do sistema. Só o quadro principal: o
+  // will-redirect também dispara em iframe (mapa, telas de outros sistemas) e
+  // conter ali deixaria o iframe em branco e abriria o navegador sozinho.
+  const conterNavegacao = (
+    event: Electron.Event<Electron.WebContentsWillNavigateEventParams>,
+  ): void => {
+    if (!event.isMainFrame || event.url.startsWith(URL_SEM_CONEXAO)) return
+    const decisao = decidirNavegacao(event.url, ENDERECO_DO_APP, emLogin)
+    emLogin = decisao.emLogin
+    if (decisao.permitir) return
     event.preventDefault()
-    const { pathname, search } = new URL(url)
-    const destino = `${PROTOCOL_URL}${pathname.replace(/^\//, '')}${search}`
-    session.defaultSession.cookies
-      .get({ domain: 'voxcity.com.br' })
-      .then((cookies) =>
-        Promise.all(
-          cookies
-            .filter((c) => c.name === 'refresh_token' || c.name === 'sso_pending')
-            .map((c) =>
-              session.defaultSession.cookies.set({
-                url: 'https://api-gateway.voxcity.com.br/',
-                name: c.name,
-                value: c.value,
-                domain: c.domain,
-                path: c.path,
-                secure: true,
-                httpOnly: c.httpOnly,
-                sameSite: 'no_restriction',
-                expirationDate: c.expirationDate,
-              }),
-            ),
-        ),
-      )
-      .catch((err) => console.error('[sso] cookies do retorno:', err))
-      .finally(() => {
-        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.loadURL(destino)
-      })
+    abrirFora(event.url)
   }
-  mainWindow.webContents.on('will-redirect', voltarParaOApp)
-  mainWindow.webContents.on('will-navigate', voltarParaOApp)
+  mainWindow.webContents.on('will-navigate', conterNavegacao)
+  mainWindow.webContents.on('will-redirect', conterNavegacao)
 
-  // Dev: load from Vite dev server | Prod: load via custom protocol (SPA routing)
-  if (is.dev && DEV_SERVER_URL) {
-    mainWindow.loadURL(DEV_SERVER_URL)
-    mainWindow.webContents.openDevTools()
-  } else {
-    mainWindow.loadURL(`${PROTOCOL_URL}index.html`)
-  }
+  mainWindow.webContents.on('did-fail-load', (_event, codigo, _descricao, url, quadroPrincipal) => {
+    // -3 = ERR_ABORTED: navegação trocada por outra, não é falta de rede.
+    if (!quadroPrincipal || codigo === -3) return
+    if (!ehDoApp(url, ENDERECO_DO_APP) && !emLogin) return
+    emLogin = false
+    mostrarSemConexao()
+  })
+
+  // Falha de rede vira a página "sem conexão" pelo did-fail-load.
+  mainWindow.loadURL(ENDERECO_DO_APP).catch(() => {})
+  if (is.dev) mainWindow.webContents.openDevTools()
 
   mainWindow.on('closed', () => {
     mainWindow = null
@@ -232,28 +214,37 @@ function createWindow(): void {
 
   // Create system tray
   createTray(mainWindow)
+}
 
+// Registrado uma vez: no macOS a janela renasce pelo dock e o listener dobraria.
+function registrarIpcDaJanela(): void {
   // Listen for call state updates from renderer
-  ipcMain.on('call-state-changed', (_event, state: 'idle' | 'ringing' | 'in-call') => {
-    if (mainWindow) {
-      updateCallState(state, mainWindow)
-    }
-  })
+  ipcMain.on(
+    'call-state-changed',
+    soDoApp(ENDERECO_DO_APP, (_event, state: 'idle' | 'ringing' | 'in-call') => {
+      if (mainWindow) {
+        updateCallState(state, mainWindow)
+      }
+    }),
+  )
 
   // Listen for badge count updates from renderer
-  ipcMain.on('set-badge-count', (_event, count: number) => {
-    updateBadgeCount(count)
+  ipcMain.on(
+    'set-badge-count',
+    soDoApp(ENDERECO_DO_APP, (_event, count: number) => {
+      updateBadgeCount(count)
 
-    // macOS / Linux: native dock badge
-    if (process.platform !== 'win32') {
-      app.setBadgeCount(count)
-    }
+      // macOS / Linux: native dock badge
+      if (process.platform !== 'win32') {
+        app.setBadgeCount(count)
+      }
 
-    // Windows: flash taskbar when new notifications arrive
-    if (mainWindow && count > 0 && !mainWindow.isFocused()) {
-      mainWindow.flashFrame(true)
-    }
-  })
+      // Windows: flash taskbar when new notifications arrive
+      if (mainWindow && count > 0 && !mainWindow.isFocused()) {
+        mainWindow.flashFrame(true)
+      }
+    }),
+  )
 }
 
 // Prevent multiple instances
@@ -263,11 +254,7 @@ if (!gotTheLock) {
   app.quit()
 } else {
   app.on('second-instance', (_event, argv) => {
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore()
-      mainWindow.show()
-      mainWindow.focus()
-    }
+    mostrarJanela()
 
     // Windows/Linux: deep link URL comes as last argv argument
     const deepLinkUrl = argv.find((arg) => arg.startsWith('infinity://'))
@@ -283,56 +270,33 @@ if (!gotTheLock) {
   })
 
   app.whenReady().then(() => {
-    // Register custom protocol for production SPA routing
-    if (!is.dev) {
-      protocol.handle(PROTOCOL, (request) => {
-        const { pathname } = new URL(request.url)
-        const filePath = join(RENDERER_DIST, decodeURIComponent(pathname))
+    // Barra de título escura no Windows 10/11 e no macOS, como o Vox Midnight.
+    nativeTheme.themeSource = 'dark'
 
-        // Serve the actual file if it exists (JS, CSS, images, etc.)
-        if (existsSync(filePath) && !statSync(filePath).isDirectory()) {
-          return net.fetch(`file://${filePath}`)
-        }
-        // SPA fallback: serve index.html for any unknown route
-        return net.fetch(`file://${join(RENDERER_DIST, 'index.html')}`)
-      })
-    }
+    // Sem o menu nativo em inglês (File/Edit/View) no Windows e no Linux. No
+    // macOS o menu de Editar é o que liga Cmd+C/Cmd+V, então fica o mínimo.
+    Menu.setApplicationMenu(
+      process.platform === 'darwin'
+        ? Menu.buildFromTemplate([{ role: 'appMenu' }, { role: 'editMenu' }, { role: 'windowMenu' }])
+        : null,
+    )
 
-    // Fix CORS for custom app:// protocol — backend doesn't know this origin
-    session.defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
-      const headers = { ...details.requestHeaders }
-      // Spoof origin so backend CORS accepts the request
-      if (details.url.includes('voxcity.com.br')) {
-        headers['Origin'] = 'https://infinity.voxcity.com.br'
-      }
-      callback({ requestHeaders: headers })
+    // Microfone, câmera e notificação só para o site do app; popup do Facebook
+    // e qualquer outra origem levam não.
+    session.defaultSession.setPermissionRequestHandler((_webContents, permissao, callback, detalhes) => {
+      callback(PERMISSOES_DO_APP.includes(permissao) && ehDoApp(detalhes.requestingUrl, ENDERECO_DO_APP))
     })
 
-    session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
-      const headers = { ...details.responseHeaders }
-      // Allow credentials + our protocol as origin
-      if (details.url.includes('voxcity.com.br')) {
-        headers['access-control-allow-origin'] = [PROTOCOL_URL.replace(/\/$/, '')]
-        headers['access-control-allow-credentials'] = ['true']
-        headers['cross-origin-resource-policy'] = ['cross-origin']
-      }
-      callback({ responseHeaders: headers })
-    })
-
-    // Grant microphone/camera permissions for WebRTC (softphone, video)
-    // clipboard-sanitized-write: recurso de copiar ata/transcrição do webapp
-    session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
-      const allowed = ['media', 'mediaKeySystem', 'notifications', 'clipboard-read', 'clipboard-sanitized-write']
-      callback(allowed.includes(permission))
-    })
-
-    setupIpcHandlers()
-    setupStartup()
+    setupIpcHandlers(ENDERECO_DO_APP)
+    setupStartup(ENDERECO_DO_APP)
+    registrarIpcDaJanela()
     createWindow()
 
     // Auto-updater only in production
     if (!is.dev && mainWindow) {
-      setupAutoUpdater(mainWindow)
+      setupAutoUpdater(mainWindow, ENDERECO_DO_APP, () => {
+        isQuitting = true
+      })
     }
 
     app.on('activate', () => {

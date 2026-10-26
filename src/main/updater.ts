@@ -1,8 +1,13 @@
 import pkg from 'electron-updater'
 const { autoUpdater } = pkg
-import { BrowserWindow } from 'electron'
+import { BrowserWindow, ipcMain } from 'electron'
+import { soDoApp } from './origem'
 
-export function setupAutoUpdater(mainWindow: BrowserWindow): void {
+export function setupAutoUpdater(
+  mainWindow: BrowserWindow,
+  enderecoDoApp: string,
+  marcarSaida: () => void,
+): void {
   // Don't check for updates in dev mode
   if (!mainWindow) return
 
@@ -20,6 +25,16 @@ export function setupAutoUpdater(mainWindow: BrowserWindow): void {
   autoUpdater.on('error', (err) => {
     console.error('[AutoUpdater] Error:', err.message)
   })
+
+  // "Reiniciar agora" do aviso de atualização: fechar a janela só a esconde na
+  // bandeja, então a instalação precisa sair daqui, com a saída já liberada.
+  ipcMain.on(
+    'instalar-atualizacao',
+    soDoApp(enderecoDoApp, () => {
+      marcarSaida()
+      autoUpdater.quitAndInstall()
+    }),
+  )
 
   // Check for updates after 10 seconds, then every 4 hours
   setTimeout(() => autoUpdater.checkForUpdates().catch(() => {}), 10_000)
