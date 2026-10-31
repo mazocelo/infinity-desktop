@@ -95,6 +95,13 @@ describe('decidirNavegacao', () => {
     })
   })
 
+  it('o Google não entra no modo login: vai ao navegador do sistema (#34766)', () => {
+    expect(decidirNavegacao('https://accounts.google.com/o/oauth2/v2/auth?x=1', APP, false)).toEqual({
+      permitir: false,
+      emLogin: false,
+    })
+  })
+
   it('o login da Microsoft não é sufixo solto (microsoftonline.com.evil.com)', () => {
     expect(decidirNavegacao('https://login.microsoftonline.com.evil.com/', APP, false).permitir).toBe(false)
   })
@@ -141,6 +148,17 @@ describe('interpretarDeepLink', () => {
     expect(interpretarDeepLink('infinity://usuarios?pendencias=42')).toEqual({
       tipo: 'rota',
       rota: '/usuarios?pendencias=42',
+    })
+  })
+
+  it('volta do login Google pelo navegador do sistema (#34766)', () => {
+    expect(interpretarDeepLink('infinity://login?sso_desktop=AbC_-123')).toEqual({
+      tipo: 'rota',
+      rota: '/login?sso_desktop=AbC_-123',
+    })
+    expect(interpretarDeepLink('infinity://login?sso_error=sso_failed')).toEqual({
+      tipo: 'rota',
+      rota: '/login?sso_error=sso_failed',
     })
   })
 

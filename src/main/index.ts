@@ -74,13 +74,20 @@ function handleDeepLink(url: string): void {
     mainWindow?.webContents.send('tray-action', `dial:${link.numero}`)
     return
   }
-  if (mainWindow) {
-    mostrarJanela()
-    mainWindow.webContents.send('deep-link', link.rota)
-  } else {
-    // Window not ready yet — store for when it initializes
-    pendingDeepLink = link.rota
-  }
+  mostrarJanela()
+  // Só entrega a uma tela do site já carregada: durante o carregamento (ou na
+  // página "sem conexão") o front ainda não ouve o canal e o link se perderia.
+  // Fica pendente e sai no did-finish-load.
+  const pronta =
+    mainWindow && !mainWindow.webContents.isLoading() && ehDoApp(mainWindow.webContents.getURL(), ENDERECO_DO_APP)
+  if (pronta) mainWindow!.webContents.send('deep-link', link.rota)
+  else pendingDeepLink = link.rota
+}
+
+function entregarLinkPendente(): void {
+  if (!pendingDeepLink || !mainWindow || !ehDoApp(mainWindow.webContents.getURL(), ENDERECO_DO_APP)) return
+  mainWindow.webContents.send('deep-link', pendingDeepLink)
+  pendingDeepLink = null
 }
 
 function abrirFora(url: string): void {
@@ -123,13 +130,12 @@ function createWindow(): void {
   // Show window when ready (avoids white flash)
   mainWindow.on('ready-to-show', () => {
     mainWindow?.show()
-
-    // Send pending deep link if app was launched via infinity:// URL
-    if (pendingDeepLink && mainWindow) {
-      mainWindow.webContents.send('deep-link', pendingDeepLink)
-      pendingDeepLink = null
-    }
   })
+
+  // O link que abriu o app (ou chegou enquanto o site carregava) sai quando o
+  // front já rodou: no ready-to-show os scripts de módulo podem não ter
+  // registrado o onDeepLink ainda.
+  mainWindow.webContents.on('did-finish-load', entregarLinkPendente)
 
   // Minimize to tray instead of closing
   mainWindow.on('close', (event) => {
@@ -286,6 +292,12 @@ if (!gotTheLock) {
     session.defaultSession.setPermissionRequestHandler((_webContents, permissao, callback, detalhes) => {
       callback(PERMISSOES_DO_APP.includes(permissao) && ehDoApp(detalhes.requestingUrl, ENDERECO_DO_APP))
     })
+
+    // Windows/Linux: o link que ABRIU o app (estava fechado) chega no argv
+    // desta instância, não no second-instance. Ex.: a volta do login Google
+    // pelo navegador do sistema (#34766) com o app fechado.
+    const linkDaPartida = process.argv.find((arg) => arg.startsWith('infinity://'))
+    if (linkDaPartida) handleDeepLink(linkDaPartida)
 
     setupIpcHandlers(ENDERECO_DO_APP)
     setupStartup(ENDERECO_DO_APP)
