@@ -98,3 +98,22 @@ export function interpretarDeepLink(url: string): DeepLink | null {
   if (caminho === 'dashboard' || caminho === 'dashboard/') return { tipo: 'rota', rota: '/dashboard' }
   return { tipo: 'rota', rota: `/${caminho}${u.search}` }
 }
+
+/** O link `infinity://` que abriu o app (Windows/Linux: vem no argv da primeira instância). */
+export function linkNoArgv(argv: readonly string[]): string | null {
+  return argv.find((arg) => arg.startsWith('infinity://')) ?? null
+}
+
+/**
+ * Se um link pode ir já à tela ou fica pendente até o front carregar.
+ * `frontCarregado` é do quadro principal só (did-finish-load depois do
+ * último did-start-navigation do quadro principal): iframe carregando não
+ * segura o link. A página "sem conexão" (fora do site) também segura.
+ */
+export function podeEntregarLink(estado: {
+  frontCarregado: boolean
+  urlAtual: string
+  enderecoDoApp: string
+}): boolean {
+  return estado.frontCarregado && ehDoApp(estado.urlAtual, estado.enderecoDoApp)
+}

@@ -10,6 +10,8 @@ import { soDoApp } from './origem'
 import {
   ehDoApp,
   interpretarDeepLink,
+  linkNoArgv,
+  podeEntregarLink,
   podeAbrirFora,
   decidirNavegacao,
   resolverEnderecoDoApp,
@@ -53,6 +55,9 @@ function getIconPath(): string {
 let mainWindow: BrowserWindow | null = null
 let isQuitting = false
 let pendingDeepLink: string | null = null
+// Quadro principal com o front carregado (did-finish-load depois da última
+// navegação dele). Iframe carregando não conta.
+let frontCarregado = false
 
 // Register infinity:// protocol as default handler
 if (!is.dev) {
@@ -78,14 +83,14 @@ function handleDeepLink(url: string): void {
   // Só entrega a uma tela do site já carregada: durante o carregamento (ou na
   // página "sem conexão") o front ainda não ouve o canal e o link se perderia.
   // Fica pendente e sai no did-finish-load.
-  const pronta =
-    mainWindow && !mainWindow.webContents.isLoading() && ehDoApp(mainWindow.webContents.getURL(), ENDERECO_DO_APP)
-  if (pronta) mainWindow!.webContents.send('deep-link', link.rota)
-  else pendingDeepLink = link.rota
+  pendingDeepLink = link.rota
+  entregarLinkPendente()
 }
 
 function entregarLinkPendente(): void {
-  if (!pendingDeepLink || !mainWindow || !ehDoApp(mainWindow.webContents.getURL(), ENDERECO_DO_APP)) return
+  if (!pendingDeepLink || !mainWindow) return
+  const urlAtual = mainWindow.webContents.getURL()
+  if (!podeEntregarLink({ frontCarregado, urlAtual, enderecoDoApp: ENDERECO_DO_APP })) return
   mainWindow.webContents.send('deep-link', pendingDeepLink)
   pendingDeepLink = null
 }
@@ -135,7 +140,13 @@ function createWindow(): void {
   // O link que abriu o app (ou chegou enquanto o site carregava) sai quando o
   // front já rodou: no ready-to-show os scripts de módulo podem não ter
   // registrado o onDeepLink ainda.
-  mainWindow.webContents.on('did-finish-load', entregarLinkPendente)
+  mainWindow.webContents.on('did-start-navigation', (event) => {
+    if (event.isMainFrame && !event.isSameDocument) frontCarregado = false
+  })
+  mainWindow.webContents.on('did-finish-load', () => {
+    frontCarregado = true
+    entregarLinkPendente()
+  })
 
   // Minimize to tray instead of closing
   mainWindow.on('close', (event) => {
@@ -296,7 +307,7 @@ if (!gotTheLock) {
     // Windows/Linux: o link que ABRIU o app (estava fechado) chega no argv
     // desta instância, não no second-instance. Ex.: a volta do login Google
     // pelo navegador do sistema (#34766) com o app fechado.
-    const linkDaPartida = process.argv.find((arg) => arg.startsWith('infinity://'))
+    const linkDaPartida = linkNoArgv(process.argv)
     if (linkDaPartida) handleDeepLink(linkDaPartida)
 
     setupIpcHandlers(ENDERECO_DO_APP)

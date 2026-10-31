@@ -3,6 +3,8 @@ import {
   decidirNavegacao,
   ehDoApp,
   interpretarDeepLink,
+  linkNoArgv,
+  podeEntregarLink,
   podeAbrirFora,
   resolverEnderecoDoApp,
 } from './navegacao'
@@ -174,5 +176,37 @@ describe('interpretarDeepLink', () => {
   it('a rota nunca sai do app (//host vira caminho)', () => {
     const r = interpretarDeepLink('infinity://x//evil.com')
     expect(r).toEqual({ tipo: 'rota', rota: '/x/evil.com' })
+  })
+})
+
+describe('linkNoArgv (#34766)', () => {
+  it('acha o link que abriu o app no argv do Windows', () => {
+    expect(
+      linkNoArgv(['C:\\Infinity\\Infinity.exe', '--allow-file-access', 'infinity://login?sso_desktop=abc']),
+    ).toBe('infinity://login?sso_desktop=abc')
+  })
+
+  it('sem link, nada', () => {
+    expect(linkNoArgv(['/opt/Infinity/infinity', '--no-sandbox'])).toBeNull()
+  })
+})
+
+describe('podeEntregarLink (#34766)', () => {
+  const base = { frontCarregado: true, urlAtual: `${APP}/login`, enderecoDoApp: APP }
+
+  it('tela do site carregada: entrega já', () => {
+    expect(podeEntregarLink(base)).toBe(true)
+  })
+
+  it('quadro principal ainda carregando: fica pendente', () => {
+    expect(podeEntregarLink({ ...base, frontCarregado: false })).toBe(false)
+  })
+
+  it('página "sem conexão" (fora do site): fica pendente', () => {
+    expect(podeEntregarLink({ ...base, urlAtual: 'file:///app/out/renderer/index.html?volta=x' })).toBe(false)
+  })
+
+  it('janela no login da Microsoft: fica pendente até voltar ao site', () => {
+    expect(podeEntregarLink({ ...base, urlAtual: 'https://login.microsoftonline.com/x' })).toBe(false)
   })
 })
