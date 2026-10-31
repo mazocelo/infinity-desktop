@@ -117,3 +117,18 @@ export function podeEntregarLink(estado: {
 }): boolean {
   return estado.frontCarregado && ehDoApp(estado.urlAtual, estado.enderecoDoApp)
 }
+
+export type EventoDoQuadroPrincipal = 'did-start-navigation' | 'did-navigate' | 'did-finish-load'
+
+/**
+ * O front do quadro principal está carregado? Só a navegação CONFIRMADA
+ * (did-navigate) zera: o did-start-navigation dispara antes do will-navigate,
+ * e a navegação que a casca cancela (link externo, mailto:, tel:) não traz
+ * did-finish-load nem did-fail-load — zerar ali prendia todo deep link
+ * seguinte até reiniciar o app (medido no Electron 45, revisão do #34766).
+ */
+export function frontCarregadoDepois(atual: boolean, evento: EventoDoQuadroPrincipal): boolean {
+  if (evento === 'did-navigate') return false
+  if (evento === 'did-finish-load') return true
+  return atual
+}

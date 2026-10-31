@@ -3,6 +3,7 @@ import {
   decidirNavegacao,
   ehDoApp,
   interpretarDeepLink,
+  frontCarregadoDepois,
   linkNoArgv,
   podeEntregarLink,
   podeAbrirFora,
@@ -208,5 +209,19 @@ describe('podeEntregarLink (#34766)', () => {
 
   it('janela no login da Microsoft: fica pendente até voltar ao site', () => {
     expect(podeEntregarLink({ ...base, urlAtual: 'https://login.microsoftonline.com/x' })).toBe(false)
+  })
+})
+
+describe('frontCarregadoDepois (#34766)', () => {
+  it('carregamento normal: navega (zera) e termina de carregar (liga)', () => {
+    let pronto = frontCarregadoDepois(true, 'did-start-navigation')
+    pronto = frontCarregadoDepois(pronto, 'did-navigate')
+    expect(pronto).toBe(false)
+    expect(frontCarregadoDepois(pronto, 'did-finish-load')).toBe(true)
+  })
+
+  it('navegação cancelada pela casca (mailto:, tel:, link externo) não segura o link', () => {
+    // Só chega o did-start-navigation; não vem did-navigate nem did-finish-load.
+    expect(frontCarregadoDepois(true, 'did-start-navigation')).toBe(true)
   })
 })

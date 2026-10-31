@@ -10,6 +10,7 @@ import { soDoApp } from './origem'
 import {
   ehDoApp,
   interpretarDeepLink,
+  frontCarregadoDepois,
   linkNoArgv,
   podeEntregarLink,
   podeAbrirFora,
@@ -55,8 +56,8 @@ function getIconPath(): string {
 let mainWindow: BrowserWindow | null = null
 let isQuitting = false
 let pendingDeepLink: string | null = null
-// Quadro principal com o front carregado (did-finish-load depois da última
-// navegação dele). Iframe carregando não conta.
+// Quadro principal com o front carregado (frontCarregadoDepois, navegacao.ts).
+// Iframe carregando não conta.
 let frontCarregado = false
 
 // Register infinity:// protocol as default handler
@@ -140,11 +141,13 @@ function createWindow(): void {
   // O link que abriu o app (ou chegou enquanto o site carregava) sai quando o
   // front já rodou: no ready-to-show os scripts de módulo podem não ter
   // registrado o onDeepLink ainda.
-  mainWindow.webContents.on('did-start-navigation', (event) => {
-    if (event.isMainFrame && !event.isSameDocument) frontCarregado = false
+  // did-navigate e did-finish-load são só do quadro principal (iframe tem
+  // did-frame-navigate / did-frame-finish-load).
+  mainWindow.webContents.on('did-navigate', () => {
+    frontCarregado = frontCarregadoDepois(frontCarregado, 'did-navigate')
   })
   mainWindow.webContents.on('did-finish-load', () => {
-    frontCarregado = true
+    frontCarregado = frontCarregadoDepois(frontCarregado, 'did-finish-load')
     entregarLinkPendente()
   })
 
